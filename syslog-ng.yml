@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: syslog-receiver
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: syslog-receiver
+  template:
+    metadata:
+      labels:
+        app: syslog-receiver
+    spec:
+      containers:
+      - name: syslog-ng
+        image: balabit/syslog-ng:4.7.1
+        ports:
+        - containerPort: 514
+          protocol: UDP
+        - containerPort: 514
+          protocol: TCP
+        volumeMounts:
+        - name: config
+          mountPath: /etc/syslog-ng/syslog-ng.conf
+          subPath: syslog-ng.conf
+      volumes:
+      - name: config
+        configMap:
+          name: syslog-ng-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: syslog-service
+spec:
+  selector:
+    app: syslog-receiver
+  ports:
+    - name: syslog-udp
+      protocol: UDP
+      port: 514
+      targetPort: 514
+    - name: syslog-tcp
+      protocol: TCP
+      port: 514
+      targetPort: 514
