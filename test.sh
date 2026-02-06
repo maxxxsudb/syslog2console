@@ -1,35 +1,35 @@
 kubectl run netcat-test --image=busybox -it --rm -- /bin/sh -c "echo '<165>Feb 06 13:44:35 TEST_HOST My_test_message_123' | nc -u -w1 syslog-service 514"
-otelcol.processor.transform "fix_syslog_headers" {
+otelcol.processor.transform "fix_logs" {
   error_mode = "ignore"
 
-  // 1. ЧИНИМ ЗАГОЛОВКИ (Resource Context)
+  // БЛОК 1: ЗАПОЛНЯЕМ ШАПКУ (Resource Context)
+  // Это уберет прочерки в начале строки. Экспортер смотрит только сюда!
   log_statements {
     context = "resource"
     statements = [
-      // Экспортер ищет именно host.name. Если его нет - он шлет дичь.
-      // Берем имя пода или ноды, или ставим заглушку
-      "set(attributes[\"host.name\"], attributes[\"k8s.pod.name\"]) where attributes[\"host.name\"] == nil",
-      "set(attributes[\"host.name\"], \"unknown-host\") where attributes[\"host.name\"] == nil",
-
-      // То же самое для имени приложения (AppName)
-      "set(attributes[\"service.name\"], attributes[\"k8s.container.name\"]) where attributes[\"service.name\"] == nil",
-      "set(attributes[\"service.name\"], \"unknown-app\") where attributes[\"service.name\"] == nil",
-      
-      // На всякий случай задаем PID (PROCID)
-      "set(attributes[\"proc_id\"], \"1\")",
+      // Жестко задаем хост и имя программы, чтобы исключить ошибки переменных
+      "set(attributes[\"host.name\"], \"k8s-fixed-node\")",
+      "set(attributes[\"service.name\"], \"my-fixed-app\")",
     ]
   }
 
-  // 2. ГАРАНТИРУЕМ ТЕЛО СООБЩЕНИЯ (Log Context)
+  // БЛОК 2: ЗАПОЛНЯЕМ ТЕЛО И ID (Log Context)
   log_statements {
     context = "log"
     statements = [
-        // Если Body вдруг пустое, но есть message в атрибутах - переносим
-        "set(body, attributes[\"message\"]) where body == nil and attributes[\"message\"] != nil",
+      // ProcID - это свойство лога
+      "set(attributes[\"proc_id\"], \"1\")",
+
+      // ГЛАВНОЕ: Если Body вдруг пустое, пишем туда текст
+      // В твоем логе (скрин 3) текст уже есть, но на всякий случай:
+      "set(body, \"DEBUG: MESSAGE BODY WAS NIL\") where body == nil",
     ]
   }
 
   output {
-    logs = [otelcol.exporter.syslog.arcsight_debug.input]
+    logs = [
+        otelcol.exporter.syslog.arcsight_debug.input,
+        otelcol.exporter.debug.inspector.input, // Чтобы ты видел в UI результат
+    ]
   }
 }
